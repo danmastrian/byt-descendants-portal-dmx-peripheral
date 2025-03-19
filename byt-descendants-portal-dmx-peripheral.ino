@@ -43,14 +43,12 @@ byte data[DMX_PACKET_SIZE];
 bool dmxIsConnected = false;
 unsigned long lastUpdate = millis();
 
-
 #include "Wire.h"
 
 #define I2C_DEV_ADDR 0x55
 
-uint32_t i = 0;
-
-void setup() {
+void setup()
+{
   /* Start the serial connection back to the computer so that we can log
     messages to the Serial Monitor. Lets set the baud rate to 115200. */
   Serial.begin(115200);
@@ -88,7 +86,8 @@ void loop()
     officially times out. That amount of time is converted into ESP32 clock
     ticks using the constant `DMX_TIMEOUT_TICK`. If it takes longer than that
     amount of time to receive data, this if statement will evaluate to false. */
-  if (dmx_receive(dmxPort, &packet, DMX_TIMEOUT_TICK)) {
+  if (dmx_receive(dmxPort, &packet, DMX_TIMEOUT_TICK))
+  {
     /* If this code gets called, it means we've received DMX data! */
 
     /* Get the current time since boot in milliseconds so that we can find out
@@ -97,9 +96,11 @@ void loop()
     unsigned long now = millis();
 
     /* We should check to make sure that there weren't any DMX errors. */
-    if (!packet.err) {
+    if (!packet.err)
+    {
       /* If this is the first DMX data we've received, lets log it! */
-      if (!dmxIsConnected) {
+      if (!dmxIsConnected)
+      {
         Serial.println("DMX is connected!");
         dmxIsConnected = true;
       }
@@ -108,7 +109,8 @@ void loop()
         that we can print it out. */
       dmx_read(dmxPort, data, packet.size);
 
-      if (now - lastUpdate > 100ul) {
+      if (now - lastUpdate > 50ul)
+      {
         /* Print the received start code - it's usually 0. */
         Serial.printf("<0x%02X>|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|\n",
           data[0],
@@ -130,9 +132,9 @@ void loop()
           memcpy(sendBuffer + 2, data + sendBuffer[0], sendBuffer[1]);
           Wire.beginTransmission(I2C_DEV_ADDR);
           //Wire.printf("DMX @ %6lu |%03d|%03d|%03d|%03d|", i++, data[1], data[2], data[3], data[4]);
-          Wire.write(sendBuffer, sizeof(sendBuffer));
+          size_t bytesWritten = Wire.write(sendBuffer, sizeof(sendBuffer));
           uint8_t error = Wire.endTransmission(true);
-          Serial.printf("endTransmission: %u\n", error);
+          Serial.printf("endTransmission: code %u, bytes written %u\n", error, bytesWritten);
 
 /*
           //Read 16 bytes from the slave
@@ -146,23 +148,23 @@ void loop()
 */
         lastUpdate = now;
       }
-    } else {
+    }
+    else
+    {
       /* Oops! A DMX error occurred! Don't worry, this can happen when you first
         connect or disconnect your DMX devices. If you are consistently getting
         DMX errors, then something may have gone wrong with your code or
         something is seriously wrong with your DMX transmitter. */
       Serial.println("A DMX error occurred.");
     }
-  } else if (dmxIsConnected) {
+  }
+  else if (dmxIsConnected)
+  {
     /* If DMX times out after having been connected, it likely means that the
       DMX cable was unplugged. When that happens in this example sketch, we'll
       uninstall the DMX driver. */
     Serial.println("DMX was disconnected.");
     dmxIsConnected = false;
     delay(1000);
-    //dmx_driver_delete(dmxPort);
-
-    /* Stop the program. */
-    //while (true) yield();
   }
 }
