@@ -113,6 +113,7 @@ void loop()
       if (now - lastUpdate > 50ul)
       {
         /* Print the received start code - it's usually 0. */
+        /*
         Serial.printf("<0x%02X>|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|\n",
           data[0],
           data[1],
@@ -125,28 +126,21 @@ void loop()
           data[8],
           data[9],
           data[10]);
+          */
 
           //Write message to the slave
           uint8_t sendBuffer[16 + 2];
-          sendBuffer[0] = 1; // start channel
-          sendBuffer[1] = 16; // channel count
-          memcpy(sendBuffer + 2, data + sendBuffer[0], sendBuffer[1]);
-          Wire.beginTransmission(I2C_DEV_ADDR);
-          //Wire.printf("DMX @ %6lu |%03d|%03d|%03d|%03d|", i++, data[1], data[2], data[3], data[4]);
-          size_t bytesWritten = Wire.write(sendBuffer, sizeof(sendBuffer));
-          uint8_t error = Wire.endTransmission(true);
-          Serial.printf("endTransmission: code %u, bytes written %u\n", error, bytesWritten);
-
-/*
-          //Read 16 bytes from the slave
-          uint8_t bytesReceived = Wire.requestFrom(I2C_DEV_ADDR, 16);
-          Serial.printf("requestFrom: %u\n", bytesReceived);
-          if ((bool)bytesReceived) {  //If received more than zero bytes
-            uint8_t temp[bytesReceived];
-            Wire.readBytes(temp, bytesReceived);
-            //log_print_buf(temp, bytesReceived);
+          for (int chStartIdx = 0; chStartIdx < 256; chStartIdx += 16)
+          {
+            sendBuffer[0] = chStartIdx + 1; // start channel
+            sendBuffer[1] = 16; // channel count
+            memcpy(sendBuffer + 2, data + sendBuffer[0], sendBuffer[1]);
+            Wire.beginTransmission(I2C_DEV_ADDR);
+            //Wire.printf("DMX @ %6lu |%03d|%03d|%03d|%03d|", i++, data[1], data[2], data[3], data[4]);
+            size_t bytesWritten = Wire.write(sendBuffer, sizeof(sendBuffer));
+            uint8_t error = Wire.endTransmission(true);
+            Serial.printf("endTransmission: startIdx %d, code %u, bytes written %u\n", chStartIdx, error, bytesWritten);
           }
-*/
         lastUpdate = now;
       }
     }
