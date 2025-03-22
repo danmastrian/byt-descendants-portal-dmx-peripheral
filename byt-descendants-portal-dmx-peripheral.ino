@@ -128,18 +128,28 @@ void loop()
           data[10]);
           */
 
-          //Write message to the slave
-          uint8_t sendBuffer[16 + 2];
-          for (int chStartIdx = 0; chStartIdx < 256; chStartIdx += 16)
+          // Write message to the peripheral (16 channels per packet)
+          const int metadataBytes = 3;
+          const int chCount = 16;
+          uint8_t sendBuffer[chCount + metadataBytes];
+          for (uint16_t chStartIdx = 0; chStartIdx < 256; chStartIdx += 16)
           {
-            sendBuffer[0] = chStartIdx + 1; // start channel
-            sendBuffer[1] = 16; // channel count
-            memcpy(sendBuffer + 2, data + sendBuffer[0], sendBuffer[1]);
+            sendBuffer[0] = ((chStartIdx + 1) >> 8) & 0xFF; // start channel high byte
+            sendBuffer[1] = (chStartIdx + 1) & 0xFF; // start channel low byte
+            sendBuffer[2] = chCount; // channel count
+            memcpy(sendBuffer + metadataBytes, data + chStartIdx, chCount);
             Wire.beginTransmission(I2C_DEV_ADDR);
             //Wire.printf("DMX @ %6lu |%03d|%03d|%03d|%03d|", i++, data[1], data[2], data[3], data[4]);
             size_t bytesWritten = Wire.write(sendBuffer, sizeof(sendBuffer));
             uint8_t error = Wire.endTransmission(true);
-            Serial.printf("endTransmission: startIdx %d, code %u, bytes written %u\n", chStartIdx, error, bytesWritten);
+            if (error == 0)
+            {
+              Serial.print(".");
+            }
+            else
+            {
+              Serial.printf("\nendTransmission: startIdx %d, code %u, bytes written %u\n", chStartIdx, error, bytesWritten);
+            }
           }
         lastUpdate = now;
       }
