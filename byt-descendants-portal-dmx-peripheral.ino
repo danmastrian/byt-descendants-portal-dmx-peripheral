@@ -54,7 +54,8 @@ void setup()
   Serial.begin(115200);
   Serial.println("============== HELLO ======================");
   Wire.begin();
-  //Wire.setClock(100000);
+  //Wire.setClock(400000);
+  Wire.setTimeout(200);
 
   /* Now we will install the DMX driver! We'll tell it which DMX port to use,
     what device configuration to use, and what DMX personalities it should have.
