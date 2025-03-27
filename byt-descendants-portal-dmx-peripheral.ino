@@ -19,9 +19,9 @@
   need to define which pin is transmitting data and which pin is receiving data.
   DMX circuits also often need to be told when we are transmitting and when we
   are receiving data. We can do this by defining an enable pin. */
-int transmitPin = 17;
-int receivePin = 16;
-int enablePin = 21;
+const int transmitPin = 17;
+const int receivePin = 16;
+const int enablePin = 21;
 /* Make sure to double-check that these pins are compatible with your ESP32!
   Some ESP32s, such as the ESP32-WROVER series, do not allow you to read or
   write data on pins 16 or 17, so it's always good to read the manuals. */
@@ -29,7 +29,7 @@ int enablePin = 21;
 /* Next, lets decide which DMX port to use. The ESP32 has either 2 or 3 ports.
   Port 0 is typically used to transmit serial data back to your Serial Monitor,
   so we shouldn't use that port. Lets use port 1! */
-dmx_port_t dmxPort = 1;
+const dmx_port_t dmxPort = 1;
 
 /* Now we want somewhere to store our DMX data. Since a single packet of DMX
   data can be up to 513 bytes long, we want our array to be at least that long.
@@ -45,14 +45,13 @@ unsigned long lastUpdate = millis();
 
 #include "Wire.h"
 
-#define I2C_DEV_ADDR 0x55
+const uint8_t I2C_DEV_ADDR = 0x55;
 
 void setup()
 {
-  /* Start the serial connection back to the computer so that we can log
-    messages to the Serial Monitor. Lets set the baud rate to 115200. */
   Serial.begin(115200);
-  Serial.println("============== HELLO ======================");
+  Serial.println("============== HELLO DMX ==============");
+
   Wire.begin();
   //Wire.setClock(400000);
   Wire.setTimeout(200);
@@ -76,6 +75,9 @@ void setup()
     will be complete! */
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 }
+
+const unsigned long DMX_FORWARD_PERIOD_MSEC = 50ul;
+const int DMX_CH_COUNT_PER_PACKET = 16;
 
 void loop()
 {
@@ -106,33 +108,15 @@ void loop()
         dmxIsConnected = true;
       }
 
-      /* Don't forget we need to actually read the DMX data into our buffer so
-        that we can print it out. */
+      // Read the DMX data into the buffer
       dmx_read(dmxPort, data, packet.size);
 
-      if (now - lastUpdate > 50ul)
+      if (now - lastUpdate > DMX_FORWARD_PERIOD_MSEC)
       {
-        /* Print the received start code - it's usually 0. */
-        /*
-        Serial.printf("<0x%02X>|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|%03d|\n",
-          data[0],
-          data[1],
-          data[2],
-          data[3],
-          data[4],
-          data[5],
-          data[6],
-          data[7],
-          data[8],
-          data[9],
-          data[10]);
-          */
-
-          if (data[0] == 0)
+          if (data[0] == 0) // Expecting DMX NULL start code
           {
-            // Write message to the peripheral (16 channels per packet)
             const int metadataBytes = 3;
-            const int chCount = 16;
+            const int chCount = DMX_CH_COUNT_PER_PACKET;
 
             uint8_t sendBuffer[chCount + metadataBytes];
 
@@ -141,10 +125,17 @@ void loop()
               sendBuffer[0] = ((chStartIdx + 1) >> 8) & 0xFF; // start channel high byte
               sendBuffer[1] = (chStartIdx + 1) & 0xFF; // start channel low byte
               sendBuffer[2] = chCount; // channel count
-              memcpy(sendBuffer + metadataBytes, data + chStartIdx + 1, chCount);
+
+              memcpy(
+                sendBuffer + metadataBytes,
+                data + chStartIdx + 1,
+                chCount);
+              
               Wire.beginTransmission(I2C_DEV_ADDR);
+
               //Wire.printf("DMX @ %6lu |%03d|%03d|%03d|%03d|", i++, data[1], data[2], data[3], data[4]);
               size_t bytesWritten = Wire.write(sendBuffer, sizeof(sendBuffer));
+              
               uint8_t error = Wire.endTransmission(true);
               if (error == 0)
               {
@@ -176,6 +167,6 @@ void loop()
       uninstall the DMX driver. */
     Serial.println("DMX was disconnected.");
     dmxIsConnected = false;
-    delay(1000);
+    delay(250);
   }
 }
