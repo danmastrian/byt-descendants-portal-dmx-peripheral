@@ -1,0 +1,11 @@
+profiles:
+  feather_esp32:
+    fqbn: esp32:esp32:featheresp32
+    platforms:
+      - platform: esp32:esp32 (3.0.4)
+        platform_index_url: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_dev_index.json
+    libraries:
+      - esp_dmx (4.1.0)
+    port: COM6
+
+default_profile: feather_esp32
