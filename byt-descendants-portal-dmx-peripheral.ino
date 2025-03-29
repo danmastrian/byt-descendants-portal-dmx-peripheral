@@ -76,7 +76,7 @@ void setup()
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 }
 
-const unsigned long DMX_FORWARD_PERIOD_MSEC = 50ul;
+const unsigned long DMX_FORWARD_PERIOD_MSEC = 30ul;
 const int DMX_CH_COUNT_PER_PACKET = 16;
 
 void loop()
@@ -116,19 +116,23 @@ void loop()
           if (data[0] == 0) // Expecting DMX NULL start code
           {
             const int metadataBytes = 3;
-            const int chCount = DMX_CH_COUNT_PER_PACKET;
+            const int DMX_UNIVERSE_SIZE = 512;
+            uint16_t chCount = DMX_CH_COUNT_PER_PACKET;
 
-            uint8_t sendBuffer[chCount + metadataBytes];
-
-            for (uint16_t chStartIdx = 1; chStartIdx <= 512; chStartIdx += chCount)
+            for (uint16_t chStartIdx = 1; chStartIdx <= DMX_UNIVERSE_SIZE; chStartIdx += chCount)
             {
-              sendBuffer[0] = ((chStartIdx + 1) >> 8) & 0xFF; // start channel high byte
-              sendBuffer[1] = (chStartIdx + 1) & 0xFF; // start channel low byte
-              sendBuffer[2] = chCount; // channel count
+              //delayMicroseconds(2000); // Small delay to avoid overwhelming the I2C bus
+              chCount = min(DMX_CH_COUNT_PER_PACKET, DMX_UNIVERSE_SIZE - chStartIdx + 1);
+
+              uint8_t sendBuffer[chCount + metadataBytes];
+
+              sendBuffer[0] = (chStartIdx >> 8) & 0xFF; // start channel high byte
+              sendBuffer[1] = chStartIdx & 0xFF; // start channel low byte
+              sendBuffer[2] = chCount & 0xFF;
 
               memcpy(
                 sendBuffer + metadataBytes,
-                data + chStartIdx + 1,
+                data + chStartIdx,
                 chCount);
               
               Wire.beginTransmission(I2C_DEV_ADDR);
@@ -143,7 +147,12 @@ void loop()
               }
               else
               {
-                Serial.printf("\nendTransmission: startIdx %d, code %u, bytes written %u\n", chStartIdx, error, bytesWritten);
+                Serial.printf(
+                  "\nendTransmission: startIdx %u, chCount %u, code %u, bytes written %u\n",
+                  chStartIdx,
+                  chCount,
+                  error,
+                  bytesWritten);
               }
             }
 
