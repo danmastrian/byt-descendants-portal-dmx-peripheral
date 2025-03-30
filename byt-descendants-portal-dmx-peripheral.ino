@@ -14,6 +14,8 @@
 */
 #include <Arduino.h>
 #include <esp_dmx.h>
+#include "Wire.h"
+#include "CRC32.h"
 
 /* First, lets define the hardware pins that we are using with our ESP32. We
   need to define which pin is transmitting data and which pin is receiving data.
@@ -31,11 +33,16 @@ const int enablePin = 21;
   so we shouldn't use that port. Lets use port 1! */
 const dmx_port_t dmxPort = 1;
 
-/* Now we want somewhere to store our DMX data. Since a single packet of DMX
-  data can be up to 513 bytes long, we want our array to be at least that long.
-  This library knows that the max DMX packet size is 513, so we can fill in the
-  array size with `DMX_PACKET_SIZE`. */
-byte data[DMX_PACKET_SIZE];
+const uint8_t I2C_DEV_ADDR = 0x55;
+
+const unsigned long DMX_FORWARD_PERIOD_MSEC = 5ul;
+
+const int DMX_CH_COUNT_PER_PACKET = 16;
+
+// 2 bytes for start channel, 1 byte for channel count
+const int I2C_PACKET_METADATA_BYTES = sizeof(uint16_t) + sizeof(uint8_t);
+
+const int DMX_UNIVERSE_SIZE = 512;
 
 /* The last two variables will allow us to know if DMX has been connected and
   also to update our packet and print to the Serial Monitor at regular
@@ -43,9 +50,13 @@ byte data[DMX_PACKET_SIZE];
 bool dmxIsConnected = false;
 unsigned long lastUpdate = millis();
 
-#include "Wire.h"
+/* Now we want somewhere to store our DMX data. Since a single packet of DMX
+  data can be up to 513 bytes long, we want our array to be at least that long.
+  This library knows that the max DMX packet size is 513, so we can fill in the
+  array size with `DMX_PACKET_SIZE`. */
+byte data[DMX_PACKET_SIZE];
 
-const uint8_t I2C_DEV_ADDR = 0x55;
+CRC32 crc;
 
 void setup()
 {
@@ -75,9 +86,6 @@ void setup()
     will be complete! */
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 }
-
-const unsigned long DMX_FORWARD_PERIOD_MSEC = 25ul;
-const int DMX_CH_COUNT_PER_PACKET = 16;
 
 void loop()
 {
@@ -115,8 +123,6 @@ void loop()
       {
           if (data[0] == 0) // Expecting DMX NULL start code
           {
-            const int metadataBytes = 3;
-            const int DMX_UNIVERSE_SIZE = 512;
             uint16_t chCount = DMX_CH_COUNT_PER_PACKET;
 
             for (uint16_t chStartIdx = 1; chStartIdx <= DMX_UNIVERSE_SIZE; chStartIdx += chCount)
@@ -124,16 +130,25 @@ void loop()
               //delayMicroseconds(2000); // Small delay to avoid overwhelming the I2C bus
               chCount = min(DMX_CH_COUNT_PER_PACKET, DMX_UNIVERSE_SIZE - chStartIdx + 1);
 
-              uint8_t sendBuffer[chCount + metadataBytes];
+              uint8_t sendBuffer[chCount + I2C_PACKET_METADATA_BYTES + sizeof(crc_size_t)];
 
               sendBuffer[0] = (chStartIdx >> 8) & 0xFF; // start channel high byte
               sendBuffer[1] = chStartIdx & 0xFF; // start channel low byte
               sendBuffer[2] = chCount & 0xFF;
 
               memcpy(
-                sendBuffer + metadataBytes,
+                sendBuffer + I2C_PACKET_METADATA_BYTES,
                 data + chStartIdx,
                 chCount);
+
+              crc.reset();
+              crc.add(sendBuffer, sizeof(sendBuffer) - sizeof(crc_size_t)); // Exclude CRC bytes
+              crc_size_t crcValue = crc.calc();
+
+              memcpy(
+                sendBuffer + I2C_PACKET_METADATA_BYTES + chCount,
+                (void*)&crcValue,
+                sizeof(crc_size_t));
               
               Wire.beginTransmission(I2C_DEV_ADDR);
 
@@ -143,16 +158,25 @@ void loop()
               uint8_t error = Wire.endTransmission(true);
               if (error == 0)
               {
-                //Serial.print(".");
+                /*
+                Serial.printf(
+                  "endTransmission: startIdx %u, chCount %u, code %u, bytes written %u, CRC %08X\n",
+                  chStartIdx,
+                  chCount,
+                  error,
+                  bytesWritten,
+                  crcValue);
+                  */
               }
               else
               {
                 Serial.printf(
-                  "\nendTransmission: startIdx %u, chCount %u, code %u, bytes written %u\n",
+                  "endTransmission: startIdx %u, chCount %u, code %u, bytes written %u, CRC %08X\n",
                   chStartIdx,
                   chCount,
                   error,
-                  bytesWritten);
+                  bytesWritten,
+                  crcValue);
               }
             }
 
