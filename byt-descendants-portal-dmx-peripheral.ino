@@ -76,7 +76,7 @@ void setup()
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 }
 
-const unsigned long DMX_FORWARD_PERIOD_MSEC = 30ul;
+const unsigned long DMX_FORWARD_PERIOD_MSEC = 25ul;
 const int DMX_CH_COUNT_PER_PACKET = 16;
 
 void loop()
@@ -143,7 +143,7 @@ void loop()
               uint8_t error = Wire.endTransmission(true);
               if (error == 0)
               {
-                Serial.print(".");
+                //Serial.print(".");
               }
               else
               {
