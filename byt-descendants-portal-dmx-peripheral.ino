@@ -40,7 +40,7 @@ const unsigned long DMX_FORWARD_PERIOD_MSEC = 5ul;
 const int DMX_CH_COUNT_PER_PACKET = 16;
 
 // 2 bytes for start channel, 1 byte for channel count
-const int I2C_PACKET_METADATA_BYTES = sizeof(uint16_t) + sizeof(uint8_t);
+const int I2C_PACKET_HEADER_BYTES = sizeof(uint16_t) + sizeof(uint8_t);
 
 const int DMX_UNIVERSE_SIZE = 512;
 
@@ -130,14 +130,14 @@ void loop()
               //delayMicroseconds(2000); // Small delay to avoid overwhelming the I2C bus
               chCount = min(DMX_CH_COUNT_PER_PACKET, DMX_UNIVERSE_SIZE - chStartIdx + 1);
 
-              uint8_t sendBuffer[chCount + I2C_PACKET_METADATA_BYTES + sizeof(crc_size_t)];
+              uint8_t sendBuffer[chCount + I2C_PACKET_HEADER_BYTES + sizeof(crc_size_t)];
 
               sendBuffer[0] = (chStartIdx >> 8) & 0xFF; // start channel high byte
               sendBuffer[1] = chStartIdx & 0xFF; // start channel low byte
               sendBuffer[2] = chCount & 0xFF;
 
               memcpy(
-                sendBuffer + I2C_PACKET_METADATA_BYTES,
+                sendBuffer + I2C_PACKET_HEADER_BYTES,
                 data + chStartIdx,
                 chCount);
 
@@ -146,7 +146,7 @@ void loop()
               crc_size_t crcValue = crc.calc();
 
               memcpy(
-                sendBuffer + I2C_PACKET_METADATA_BYTES + chCount,
+                sendBuffer + I2C_PACKET_HEADER_BYTES + chCount,
                 (void*)&crcValue,
                 sizeof(crc_size_t));
               
