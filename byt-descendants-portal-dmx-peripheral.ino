@@ -58,10 +58,15 @@ byte data[DMX_PACKET_SIZE];
 
 CRC32 crc;
 
+HardwareSerial b2bSerial(2);
+
 void setup()
 {
   Serial.begin(115200);
   Serial.println("============== HELLO DMX ==============");
+
+  b2bSerial.begin(460800, SERIAL_8N1, 27, 26);
+  b2bSerial.println("DMX Forwarder started");
 
   Wire.begin();
   //Wire.setClock(400000);
@@ -91,14 +96,15 @@ void loop()
 {
   /* We need a place to store information about the DMX packets we receive. We
     will use a dmx_packet_t to store that packet information.  */
-  dmx_packet_t packet;
+  //dmx_packet_t packet;
 
   /* And now we wait! The DMX standard defines the amount of time until DMX
     officially times out. That amount of time is converted into ESP32 clock
     ticks using the constant `DMX_TIMEOUT_TICK`. If it takes longer than that
     amount of time to receive data, this if statement will evaluate to false. */
-  if (dmx_receive(dmxPort, &packet, DMX_TIMEOUT_TICK))
-  {
+    delay(20);
+  //if (dmx_receive(dmxPort, &packet, DMX_TIMEOUT_TICK))
+  //{
     /* If this code gets called, it means we've received DMX data! */
 
     /* Get the current time since boot in milliseconds so that we can find out
@@ -107,8 +113,8 @@ void loop()
     unsigned long now = millis();
 
     /* We should check to make sure that there weren't any DMX errors. */
-    if (!packet.err)
-    {
+    //if (!packet.err)
+    //{
       /* If this is the first DMX data we've received, lets log it! */
       if (!dmxIsConnected)
       {
@@ -117,7 +123,13 @@ void loop()
       }
 
       // Read the DMX data into the buffer
-      dmx_read(dmxPort, data, packet.size);
+      //dmx_read(dmxPort, data, packet.size);
+
+      // Set up fake DMX data for testing
+      for (int i = 0; i < DMX_PACKET_SIZE; i++)
+      {
+        data[i] = i;
+      }
 
       if (now - lastUpdate > DMX_FORWARD_PERIOD_MSEC)
       {
@@ -181,25 +193,8 @@ void loop()
             }
 
             lastUpdate = now;
+
+            b2bSerial.println("DMX packet sent");
           }
       }
-    }
-    else
-    {
-      /* Oops! A DMX error occurred! Don't worry, this can happen when you first
-        connect or disconnect your DMX devices. If you are consistently getting
-        DMX errors, then something may have gone wrong with your code or
-        something is seriously wrong with your DMX transmitter. */
-      Serial.println("A DMX error occurred.");
-    }
-  }
-  else if (dmxIsConnected)
-  {
-    /* If DMX times out after having been connected, it likely means that the
-      DMX cable was unplugged. When that happens in this example sketch, we'll
-      uninstall the DMX driver. */
-    Serial.println("DMX was disconnected.");
-    dmxIsConnected = false;
-    delay(250);
-  }
 }
