@@ -65,8 +65,8 @@ void setup()
   Serial.begin(115200);
   Serial.println("============== HELLO DMX ==============");
 
-  b2bSerial.begin(460800, SERIAL_8N1, 27, 26);
-  b2bSerial.println("DMX Forwarder started");
+  b2bSerial.begin(115200, SERIAL_8N1, 27, 26);
+  //b2bSerial.println("DMX Forwarder started");
 
   Wire.begin();
   //Wire.setClock(400000);
@@ -92,6 +92,21 @@ void setup()
   dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 }
 
+typedef struct
+{
+  uint16_t StartMarker; // 0xCAFE
+  uint8_t MessageType;
+  uint16_t PayloadLength;
+  crc_size_t CrcValue;
+} MessageHeader;
+
+typedef struct DmxPacketFragment
+{
+  uint16_t startChannel; // Start channel (1-based index)
+  uint8_t channelCount; // Number of channels in this fragment
+  uint8_t data[DMX_CH_COUNT_PER_PACKET]; // DMX data for the channels
+} dmx_packet_fragment_t;
+
 void loop()
 {
   /* We need a place to store information about the DMX packets we receive. We
@@ -102,7 +117,7 @@ void loop()
     officially times out. That amount of time is converted into ESP32 clock
     ticks using the constant `DMX_TIMEOUT_TICK`. If it takes longer than that
     amount of time to receive data, this if statement will evaluate to false. */
-    delay(20);
+    delay(1000);
   //if (dmx_receive(dmxPort, &packet, DMX_TIMEOUT_TICK))
   //{
     /* If this code gets called, it means we've received DMX data! */
@@ -122,14 +137,13 @@ void loop()
         dmxIsConnected = true;
       }
 
-      // Read the DMX data into the buffer
-      //dmx_read(dmxPort, data, packet.size);
-
       // Set up fake DMX data for testing
       for (int i = 0; i < DMX_PACKET_SIZE; i++)
       {
         data[i] = i;
       }
+
+      Serial.println("Loop");
 
       if (now - lastUpdate > DMX_FORWARD_PERIOD_MSEC)
       {
@@ -142,59 +156,36 @@ void loop()
               //delayMicroseconds(2000); // Small delay to avoid overwhelming the I2C bus
               chCount = min(DMX_CH_COUNT_PER_PACKET, DMX_UNIVERSE_SIZE - chStartIdx + 1);
 
-              uint8_t sendBuffer[chCount + I2C_PACKET_HEADER_BYTES + sizeof(crc_size_t)];
+              dmx_packet_fragment_t fragment;
+              fragment.startChannel = chStartIdx; // 1-based index
+              fragment.channelCount = chCount;
+              memcpy(fragment.data, data + chStartIdx - 1, chCount); // Copy DMX data
 
-              sendBuffer[0] = (chStartIdx >> 8) & 0xFF; // start channel high byte
-              sendBuffer[1] = chStartIdx & 0xFF; // start channel low byte
-              sendBuffer[2] = chCount & 0xFF;
-
-              memcpy(
-                sendBuffer + I2C_PACKET_HEADER_BYTES,
-                data + chStartIdx,
-                chCount);
+              MessageHeader header;
+              header.StartMarker = 0xCAFE; // Custom start marker
+              header.MessageType = 0x01; // DMX packet type
+              header.PayloadLength = sizeof(fragment);
+              header.CrcValue = 0; // Placeholder for CRC
 
               crc.reset();
-              crc.add(sendBuffer, sizeof(sendBuffer) - sizeof(crc_size_t)); // Exclude CRC bytes
-              crc_size_t crcValue = crc.calc();
+              crc.add((uint8_t*)&header, sizeof(header));
+              crc.add((uint8_t*)&fragment, sizeof(fragment));
+              header.CrcValue = crc.calc(); // Calculate CRC value
 
-              memcpy(
-                sendBuffer + I2C_PACKET_HEADER_BYTES + chCount,
-                (void*)&crcValue,
-                sizeof(crc_size_t));
-              
-              Wire.beginTransmission(I2C_DEV_ADDR);
+              size_t bytesWritten = b2bSerial.write((uint8_t*)&header, sizeof(header));
+              bytesWritten += b2bSerial.write((uint8_t*)&fragment, sizeof(fragment));
 
-              //Wire.printf("DMX @ %6lu |%03d|%03d|%03d|%03d|", i++, data[1], data[2], data[3], data[4]);
-              size_t bytesWritten = Wire.write(sendBuffer, sizeof(sendBuffer));
-              
-              uint8_t error = Wire.endTransmission(true);
-              if (error == 0)
+              if (bytesWritten != sizeof(header) + sizeof(fragment))
               {
-                /*
-                Serial.printf(
-                  "endTransmission: startIdx %u, chCount %u, code %u, bytes written %u, CRC %08X\n",
-                  chStartIdx,
-                  chCount,
-                  error,
-                  bytesWritten,
-                  crcValue);
-                  */
+                Serial.println("Error writing to serial port");
               }
               else
               {
-                Serial.printf(
-                  "endTransmission: startIdx %u, chCount %u, code %u, bytes written %u, CRC %08X\n",
-                  chStartIdx,
-                  chCount,
-                  error,
-                  bytesWritten,
-                  crcValue);
+                Serial.printf("DMX Fragment: Start Channel: %d, Count: %d\n", fragment.startChannel, fragment.channelCount);
               }
             }
 
             lastUpdate = now;
-
-            b2bSerial.println("DMX packet sent");
           }
       }
 }
