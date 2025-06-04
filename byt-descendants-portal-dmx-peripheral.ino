@@ -16,6 +16,7 @@
 #include <esp_dmx.h>
 #include "Wire.h"
 #include "CRC32.h"
+#include "SerialTransfer.h"
 
 /* First, lets define the hardware pins that we are using with our ESP32. We
   need to define which pin is transmitting data and which pin is receiving data.
@@ -56,17 +57,19 @@ unsigned long lastUpdate = millis();
   array size with `DMX_PACKET_SIZE`. */
 byte data[DMX_PACKET_SIZE];
 
-CRC32 crc;
+CRC32 myCrc;
 
 HardwareSerial b2bSerial(2);
+SerialTransfer b2bSerialTransfer;
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("============== HELLO DMX ==============");
 
-  b2bSerial.begin(115200, SERIAL_8N1, 27, 26);
+  b2bSerial.begin(115200, SERIAL_8E2, 27, 26);
   //b2bSerial.println("DMX Forwarder started");
+  b2bSerialTransfer.begin(b2bSerial);
 
   Wire.begin();
   //Wire.setClock(400000);
@@ -143,8 +146,6 @@ void loop()
         data[i] = i;
       }
 
-      Serial.println("Loop");
-
       if (now - lastUpdate > DMX_FORWARD_PERIOD_MSEC)
       {
           if (data[0] == 0) // Expecting DMX NULL start code
@@ -153,7 +154,8 @@ void loop()
 
             for (uint16_t chStartIdx = 1; chStartIdx <= DMX_UNIVERSE_SIZE; chStartIdx += chCount)
             {
-              //delayMicroseconds(2000); // Small delay to avoid overwhelming the I2C bus
+              delayMicroseconds(10000); // Small delay to avoid overwhelming the I2C bus
+
               chCount = min(DMX_CH_COUNT_PER_PACKET, DMX_UNIVERSE_SIZE - chStartIdx + 1);
 
               dmx_packet_fragment_t fragment;
@@ -167,22 +169,27 @@ void loop()
               header.PayloadLength = sizeof(fragment);
               header.CrcValue = 0; // Placeholder for CRC
 
-              crc.reset();
-              crc.add((uint8_t*)&header, sizeof(header));
-              crc.add((uint8_t*)&fragment, sizeof(fragment));
-              header.CrcValue = crc.calc(); // Calculate CRC value
+              myCrc.reset();
+              myCrc.add((uint8_t*)&header, sizeof(header));
+              myCrc.add((uint8_t*)&fragment, sizeof(fragment));
+              header.CrcValue = myCrc.calc(); // Calculate CRC value
 
-              size_t bytesWritten = b2bSerial.write((uint8_t*)&header, sizeof(header));
-              bytesWritten += b2bSerial.write((uint8_t*)&fragment, sizeof(fragment));
+              uint16_t sendSize = 0;
+              sendSize = b2bSerialTransfer.txObj(header, sendSize);
+              sendSize = b2bSerialTransfer.txObj(fragment, sendSize);
+              b2bSerialTransfer.sendData(sendSize);
 
-              if (bytesWritten != sizeof(header) + sizeof(fragment))
-              {
-                Serial.println("Error writing to serial port");
-              }
-              else
-              {
-                Serial.printf("DMX Fragment: Start Channel: %d, Count: %d\n", fragment.startChannel, fragment.channelCount);
-              }
+              // size_t bytesWritten = b2bSerial.write((uint8_t*)&header, sizeof(header));
+              // bytesWritten += b2bSerial.write((uint8_t*)&fragment, sizeof(fragment));
+
+              // if (bytesWritten != sizeof(header) + sizeof(fragment))
+              // {
+              //   Serial.println("Error writing to serial port");
+              // }
+              // else
+              // {
+              //   Serial.printf("DMX Fragment: Start Channel: %d, Count: %d\n", fragment.startChannel, fragment.channelCount);
+              // }
             }
 
             lastUpdate = now;
