@@ -16,6 +16,7 @@
 #include <esp_dmx.h>
 #include "Wire.h"
 #include "CRC32.h"
+#include <SPI.h>
 #include "SerialTransfer.h"
 
 /* First, lets define the hardware pins that we are using with our ESP32. We
@@ -59,21 +60,27 @@ byte data[DMX_PACKET_SIZE];
 
 CRC32 myCrc;
 
-HardwareSerial b2bSerial(2);
-SerialTransfer b2bSerialTransfer;
+//HardwareSerial b2bSerial(2);
+//SerialTransfer b2bSerialTransfer;
+
+SPIClass mySPI(HSPI); // or HSPI
+#define CS_PIN A5
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("============== HELLO DMX ==============");
 
-  b2bSerial.begin(115200, SERIAL_8E2, 27, 26);
+  //b2bSerial.begin(115200, SERIAL_8E2, 27, 26);
   //b2bSerial.println("DMX Forwarder started");
-  b2bSerialTransfer.begin(b2bSerial);
+  //b2bSerialTransfer.begin(b2bSerial);
 
-  Wire.begin();
+  pinMode(CS_PIN, OUTPUT); // Set the CS pin for SPI
+  mySPI.begin(SCK, MISO, MOSI, CS_PIN);
+
+  //Wire.begin();
   //Wire.setClock(400000);
-  Wire.setTimeout(200);
+  //Wire.setTimeout(200);
 
   /* Now we will install the DMX driver! We'll tell it which DMX port to use,
     what device configuration to use, and what DMX personalities it should have.
@@ -88,11 +95,11 @@ void setup()
     {1, "Default Personality"}
   };
   int personality_count = 1;
-  dmx_driver_install(dmxPort, &config, personalities, personality_count);
+  //dmx_driver_install(dmxPort, &config, personalities, personality_count);
 
   /* Now set the DMX hardware pins to the pins that we want to use and setup
     will be complete! */
-  dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
+  //dmx_set_pin(dmxPort, transmitPin, receivePin, enablePin);
 }
 
 typedef struct
@@ -110,6 +117,8 @@ typedef struct DmxPacketFragment
   uint8_t data[DMX_CH_COUNT_PER_PACKET]; // DMX data for the channels
 } dmx_packet_fragment_t;
 
+uint8_t seq = 0;
+
 void loop()
 {
   /* We need a place to store information about the DMX packets we receive. We
@@ -120,7 +129,29 @@ void loop()
     officially times out. That amount of time is converted into ESP32 clock
     ticks using the constant `DMX_TIMEOUT_TICK`. If it takes longer than that
     amount of time to receive data, this if statement will evaluate to false. */
-    delay(1000);
+    delay(35);
+
+    //Serial.println("SPI send");
+    digitalWrite(CS_PIN, LOW); // Set CS low to select the SPI device
+    mySPI.beginTransaction(SPISettings(3000000, MSBFIRST, SPI_MODE0));
+    mySPI.transfer(seq++);
+    mySPI.transfer(0xDE);
+    mySPI.transfer(0xAD);
+    mySPI.transfer(0xBE);
+    mySPI.transfer(0xEF);
+    mySPI.transfer(0xCA);
+    mySPI.transfer(0xFE);
+    mySPI.transfer(0xF0);
+    mySPI.transfer(0x0D);
+    for (uint8_t i = 0; i < 128; i++)
+    {
+      mySPI.transfer(i);
+    }
+    mySPI.endTransaction();
+    digitalWrite(CS_PIN, HIGH); // Set CS high to deselect the SPI device
+
+#ifdef DMX
+
   //if (dmx_receive(dmxPort, &packet, DMX_TIMEOUT_TICK))
   //{
     /* If this code gets called, it means we've received DMX data! */
@@ -175,9 +206,9 @@ void loop()
               header.CrcValue = myCrc.calc(); // Calculate CRC value
 
               uint16_t sendSize = 0;
-              sendSize = b2bSerialTransfer.txObj(header, sendSize);
-              sendSize = b2bSerialTransfer.txObj(fragment, sendSize);
-              b2bSerialTransfer.sendData(sendSize);
+              //sendSize = b2bSerialTransfer.txObj(header, sendSize);
+              //sendSize = b2bSerialTransfer.txObj(fragment, sendSize);
+              //b2bSerialTransfer.sendData(sendSize);
 
               // size_t bytesWritten = b2bSerial.write((uint8_t*)&header, sizeof(header));
               // bytesWritten += b2bSerial.write((uint8_t*)&fragment, sizeof(fragment));
@@ -195,4 +226,6 @@ void loop()
             lastUpdate = now;
           }
       }
+
+      #endif
 }
