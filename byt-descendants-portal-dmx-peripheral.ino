@@ -129,11 +129,11 @@ void loop()
     officially times out. That amount of time is converted into ESP32 clock
     ticks using the constant `DMX_TIMEOUT_TICK`. If it takes longer than that
     amount of time to receive data, this if statement will evaluate to false. */
-    delay(35);
+    delay(5);
 
     //Serial.println("SPI send");
     digitalWrite(CS_PIN, LOW); // Set CS low to select the SPI device
-    mySPI.beginTransaction(SPISettings(3000000, MSBFIRST, SPI_MODE0));
+    mySPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
     mySPI.transfer(seq++);
     mySPI.transfer(0xDE);
     mySPI.transfer(0xAD);
